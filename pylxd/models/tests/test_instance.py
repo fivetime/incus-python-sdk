@@ -26,10 +26,7 @@ class TestInstance(testing.PyLXDTestCase):
             {
                 "text": "boot output\n",
                 "method": "GET",
-                "url": (
-                    r"^http://pylxd.test/1.0/instances/an-instance/"
-                    r"console$"
-                ),
+                "url": (r"^http://pylxd.test/1.0/instances/an-instance/" r"console$"),
             }
         )
 
