@@ -476,6 +476,11 @@ class Instance(model.Model):
         state = InstanceState(response.json()["metadata"])
         return state
 
+    def console_log(self):
+        """Return the instance console log as bytes."""
+        response = self.api.console.get(is_api=False)
+        return response.content
+
     def start(self, timeout=30, force=True, wait=False):
         """Start the instance."""
         return self._set_state("start", timeout=timeout, force=force, wait=wait)

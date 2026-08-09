@@ -21,6 +21,22 @@ class TestInstance(testing.PyLXDTestCase):
 
         self.assertEqual(1, len(instances))
 
+    def test_console_log(self):
+        self.add_rule(
+            {
+                "text": "boot output\n",
+                "method": "GET",
+                "url": (
+                    r"^http://pylxd.test/1.0/instances/an-instance/"
+                    r"console$"
+                ),
+            }
+        )
+
+        instance = models.Instance.get(self.client, "an-instance")
+
+        self.assertEqual(b"boot output\n", instance.console_log())
+
     def test_all_with_fields_uses_selective_recursion(self):
         """When the extension is present and fields is given, the selective
         recursion URL (recursion=2;fields=...) is used."""
