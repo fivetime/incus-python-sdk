@@ -341,6 +341,22 @@ class TestClient(TestCase):
             "ws+unix:///lxd/unix.socket", ssl_options=None
         )
 
+    def test_events_include_project(self):
+        """The websocket stream honors the client's project scope."""
+        self.get.return_value.json.return_value["metadata"][
+            "api_extensions"
+        ] = ["projects"]
+        an_client = client.Client(project="nova")
+
+        ws_client = an_client.events(event_types={client.EventType.Lifecycle})
+
+        resource = parse.urlparse(ws_client.resource)
+        self.assertEqual("/1.0/events", resource.path)
+        self.assertEqual(
+            {"project": ["nova"], "type": ["lifecycle"]},
+            parse.parse_qs(resource.query),
+        )
+
     def test_events_http(self):
         """An http compatible websocket client is returned."""
         websocket_client = mock.Mock(resource=None)

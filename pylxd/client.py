@@ -675,10 +675,15 @@ class Client:
         parsed = parse.urlparse(self.api.events._api_endpoint)
 
         resource = parsed.path
+        query = parse.parse_qs(parsed.query)
+
+        if self.project is not None:
+            query["project"] = self.project
 
         if event_types and EventType.All not in event_types:
-            query = parse.parse_qs(parsed.query)
             query.update({"type": ",".join(t.value for t in event_types)})
+
+        if query:
             resource = f"{resource}?{parse.urlencode(query)}"
 
         client.resource = resource
