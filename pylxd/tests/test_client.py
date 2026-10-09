@@ -343,9 +343,9 @@ class TestClient(TestCase):
 
     def test_events_include_project(self):
         """The websocket stream honors the client's project scope."""
-        self.get.return_value.json.return_value["metadata"][
-            "api_extensions"
-        ] = ["projects"]
+        self.get.return_value.json.return_value["metadata"]["api_extensions"] = [
+            "projects"
+        ]
         an_client = client.Client(project="nova")
 
         ws_client = an_client.events(event_types={client.EventType.Lifecycle})
