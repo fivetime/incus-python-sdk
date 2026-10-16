@@ -260,8 +260,8 @@ class _APINode:
         kwargs["timeout"] = kwargs.get("timeout", self._timeout)
 
         if self._project is not None:
-            params = kwargs.get("params", {})
-            params["project"] = self._project
+            params = dict(kwargs.get("params", {}))
+            params.setdefault("project", self._project)
             kwargs["params"] = params
 
         response = self.session.get(self._api_endpoint, *args, **kwargs)
@@ -276,13 +276,13 @@ class _APINode:
 
         target = kwargs.pop("target", None)
         if target is not None:
-            params = kwargs.get("params", {})
+            params = dict(kwargs.get("params", {}))
             params["target"] = target
             kwargs["params"] = params
 
         if self._project is not None:
-            params = kwargs.get("params", {})
-            params["project"] = self._project
+            params = dict(kwargs.get("params", {}))
+            params.setdefault("project", self._project)
             kwargs["params"] = params
 
         response = self.session.post(self._api_endpoint, *args, **kwargs)
@@ -296,8 +296,8 @@ class _APINode:
         kwargs["timeout"] = kwargs.get("timeout", self._timeout)
 
         if self._project is not None:
-            params = kwargs.get("params", {})
-            params["project"] = self._project
+            params = dict(kwargs.get("params", {}))
+            params.setdefault("project", self._project)
             kwargs["params"] = params
 
         response = self.session.put(self._api_endpoint, *args, **kwargs)
@@ -309,8 +309,8 @@ class _APINode:
         kwargs["timeout"] = kwargs.get("timeout", self._timeout)
 
         if self._project is not None:
-            params = kwargs.get("params", {})
-            params["project"] = self._project
+            params = dict(kwargs.get("params", {}))
+            params.setdefault("project", self._project)
             kwargs["params"] = params
 
         response = self.session.patch(self._api_endpoint, *args, **kwargs)
@@ -322,8 +322,8 @@ class _APINode:
         kwargs["timeout"] = kwargs.get("timeout", self._timeout)
 
         if self._project is not None:
-            params = kwargs.get("params", {})
-            params["project"] = self._project
+            params = dict(kwargs.get("params", {}))
+            params.setdefault("project", self._project)
             kwargs["params"] = params
 
         response = self.session.delete(self._api_endpoint, *args, **kwargs)

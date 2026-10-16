@@ -5,6 +5,12 @@ API documentation
 Client
 ------
 
+The client's ``project`` selects the default project for API calls. An
+explicit ``params={'project': ...}`` on an individual call takes precedence.
+Query dictionaries supplied by the caller are copied before adding defaults
+or a target; they are not mutated. Server authorization still determines
+which projects the caller can access.
+
 .. autoclass:: pylxd.client.Client
    :members:
 
