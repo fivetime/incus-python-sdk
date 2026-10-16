@@ -490,7 +490,10 @@ class Client:
 
         self.project = project
         if endpoint:
-            if endpoint.startswith("/") and os.path.exists(endpoint):
+            # An absolute path is always a Unix socket. A socket that does
+            # not exist yet must fail as a connection error, not as an
+            # unparseable HTTP URL.
+            if endpoint.startswith("/"):
                 endpoint = f"http+unix://{parse.quote(endpoint, safe='')}"
             else:
                 # Extra trailing slashes cause LXD to 301
