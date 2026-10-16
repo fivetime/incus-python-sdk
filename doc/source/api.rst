@@ -93,3 +93,6 @@ Cluster
 
 .. autoclass:: pylxd.models.ClusterMember
    :members:
+
+.. autoclass:: pylxd.models.ClusterLink
+   :members:
