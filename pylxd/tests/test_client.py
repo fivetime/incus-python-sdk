@@ -122,6 +122,17 @@ class TestClient(TestCase):
 
         self.assertEqual(expected, a_client.api._api_endpoint)
 
+    def test_create_endpoint_missing_unixsocket(self):
+        """A missing socket path is still a unix socket endpoint."""
+        endpoint = "/tmp/missing/unix.socket"
+        expected = "http+unix://%2Ftmp%2Fmissing%2Funix.socket/1.0"
+
+        with mock.patch("os.path.exists") as mock_exists:
+            mock_exists.return_value = False
+            a_client = client.Client(endpoint)
+
+        self.assertEqual(expected, a_client.api._api_endpoint)
+
     def test_connection_404(self):
         """If the endpoint 404s, an exception is raised."""
         response = mock.MagicMock(status_code=404)
@@ -622,6 +633,47 @@ class TestAPINode(TestCase):
         node = client._APINode("http://test.com", session)
         node.delete()
         session.delete.assert_called_once_with("http://test.com", timeout=None)
+
+
+class TestMissingUnixSocket(TestCase):
+    def test_missing_socket_raises_connection_failed(self):
+        """A socket that does not exist yet is a connection failure."""
+        endpoint = os.path.join(os.sep, "nonexistent-pylxd-test", "unix.socket")
+        with pytest.raises(exceptions.ClientConnectionFailed):
+            client.Client(endpoint=endpoint)
+
+
+class TestProjectQueryDefaults(TestCase):
+    def test_explicit_project_is_preserved_for_all_http_methods(self):
+        for method in ("get", "post", "put", "patch", "delete"):
+            with self.subTest(method=method):
+                response = mock.Mock(status_code=200)
+                response.json.return_value = {"type": "sync"}
+                session = mock.Mock()
+                getattr(session, method).return_value = response
+                node = client._APINode("http://test.com", session, project="default")
+                params = {"project": "explicit", "recursion": 1}
+                getattr(node, method)(params=params)
+                self.assertEqual(
+                    params, getattr(session, method).call_args.kwargs["params"]
+                )
+                self.assertEqual({"project": "explicit", "recursion": 1}, params)
+
+    def test_default_project_does_not_mutate_caller_parameters(self):
+        for method in ("get", "post", "put", "patch", "delete"):
+            with self.subTest(method=method):
+                response = mock.Mock(status_code=200)
+                response.json.return_value = {"type": "sync"}
+                session = mock.Mock()
+                getattr(session, method).return_value = response
+                node = client._APINode("http://test.com", session, project="default")
+                params = {"recursion": 1}
+                getattr(node, method)(params=params)
+                self.assertEqual(
+                    {"project": "default", "recursion": 1},
+                    getattr(session, method).call_args.kwargs["params"],
+                )
+                self.assertEqual({"recursion": 1}, params)
 
 
 class TestWebsocketClient(TestCase):
