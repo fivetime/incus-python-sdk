@@ -14,6 +14,7 @@
 import base64
 import json
 import os
+from types import MappingProxyType
 from unittest import TestCase, mock
 from urllib import parse
 
@@ -70,9 +71,9 @@ class TestClient(TestCase):
         an_client = client.Client()
         self.assertEqual(expected, an_client.api._api_endpoint)
 
+    @mock.patch.dict(os.environ, {"LXD_DIR": "/lxd"})
     def test_create_LXD_DIR(self):
         """When LXD_DIR is set, use it in the client."""
-        os.environ["LXD_DIR"] = "/lxd"
         expected = "http+unix://%2Flxd%2Funix.socket/1.0"
 
         an_client = client.Client()
@@ -338,12 +339,12 @@ class TestClient(TestCase):
 
         self.assertEqual("/1.0/events", ws_client.resource)
 
+    @mock.patch.dict(os.environ, {"LXD_DIR": "/lxd"})
     def test_events_unix_socket(self):
         """A unix socket compatible websocket client is returned."""
         websocket_client = mock.Mock(resource=None)
         WebsocketClient = mock.Mock()
         WebsocketClient.return_value = websocket_client
-        os.environ["LXD_DIR"] = "/lxd"
         an_client = client.Client()
 
         an_client.events(websocket_client=WebsocketClient)
@@ -519,8 +520,8 @@ class TestAPINode(TestCase):
         self.assertEqual("http://test.com/test", new_node._api_endpoint)
 
     def test_getitem_leave_underscores_alone(self):
-        """Bug 295 erronously changed underscores to '-' -- let's make sure
-        it doens't happend again
+        """Bug 295 erroneously changed underscores to '-' -- let's make sure
+        it doesn't happen again
         """
         node = client._APINode("http://test.com", mock.sentinel.session)
         new_node = node.thing["my_snapshot"]
@@ -533,7 +534,7 @@ class TestAPINode(TestCase):
         self.assertIs(node.session, session)
 
     def test_session_passed_to_child(self):
-        """session should be shared across path traversl"""
+        """session should be shared across path traversal"""
         parent_node = client._APINode("http+unix://test.com", mock.sentinel.session)
         child_node = parent_node.instances
         self.assertIs(parent_node.session, child_node.session)
@@ -568,6 +569,26 @@ class TestAPINode(TestCase):
         node = client._APINode("http://test.com", session)
         node.post()
         session.post.assert_called_once_with("http://test.com", timeout=None)
+
+    @mock.patch("pylxd.client.requests.Session")
+    def test_post_raw_data(self, Session):
+        """A raw request body is sent as application/octet-stream."""
+        response = mock.Mock(
+            **{
+                "status_code": 200,
+                "json.return_value": {"type": "sync"},
+            }
+        )
+        session = mock.Mock(**{"post.return_value": response})
+        Session.return_value = session
+        node = client._APINode("http://test.com", session)
+        node.post(data=b"raw")
+        session.post.assert_called_once_with(
+            "http://test.com",
+            data=b"raw",
+            headers={"Content-Type": "application/octet-stream"},
+            timeout=None,
+        )
 
     @mock.patch("pylxd.client.requests.Session")
     def test_post_200_not_sync(self, Session):
@@ -613,6 +634,26 @@ class TestAPINode(TestCase):
         session.put.assert_called_once_with("http://test.com", timeout=None)
 
     @mock.patch("pylxd.client.requests.Session")
+    def test_put_raw_data(self, Session):
+        """A raw request body is sent as application/octet-stream."""
+        response = mock.Mock(
+            **{
+                "status_code": 200,
+                "json.return_value": {"type": "sync"},
+            }
+        )
+        session = mock.Mock(**{"put.return_value": response})
+        Session.return_value = session
+        node = client._APINode("http://test.com", session)
+        node.put(data=b"raw")
+        session.put.assert_called_once_with(
+            "http://test.com",
+            data=b"raw",
+            headers={"Content-Type": "application/octet-stream"},
+            timeout=None,
+        )
+
+    @mock.patch("pylxd.client.requests.Session")
     def test_patch(self, Session):
         """Perform a session patch."""
         response = mock.Mock(
@@ -626,6 +667,26 @@ class TestAPINode(TestCase):
         node = client._APINode("http://test.com", session)
         node.patch()
         session.patch.assert_called_once_with("http://test.com", timeout=None)
+
+    @mock.patch("pylxd.client.requests.Session")
+    def test_patch_raw_data(self, Session):
+        """A raw request body is sent as application/octet-stream."""
+        response = mock.Mock(
+            **{
+                "status_code": 200,
+                "json.return_value": {"type": "sync"},
+            }
+        )
+        session = mock.Mock(**{"patch.return_value": response})
+        Session.return_value = session
+        node = client._APINode("http://test.com", session)
+        node.patch(data=b"raw")
+        session.patch.assert_called_once_with(
+            "http://test.com",
+            data=b"raw",
+            headers={"Content-Type": "application/octet-stream"},
+            timeout=None,
+        )
 
     @mock.patch("pylxd.client.requests.Session")
     def test_delete(self, Session):
@@ -734,6 +795,64 @@ class TestGetSessionForUrl(TestCase):
         session = client.get_session_for_url("http://test.com", verify=True)
         self.assertIs(session.verify, True)
 
+    def _merged_settings(self, session, url="https://lxd.test:8443/1.0"):
+        """Return the settings requests resolves for a request on session."""
+        return session.merge_environment_settings(url, {}, None, None, None)
+
+    @mock.patch.dict(os.environ, {"REQUESTS_CA_BUNDLE": "/env/ca-bundle.crt"})
+    def test_session_verify_false_beats_requests_ca_bundle(self):
+        """verify=False is not overridden by REQUESTS_CA_BUNDLE."""
+        session = client.get_session_for_url("https://lxd.test:8443", verify=False)
+        self.assertIs(self._merged_settings(session)["verify"], False)
+
+    @mock.patch.dict(os.environ, {"CURL_CA_BUNDLE": "/env/ca-bundle.crt"})
+    def test_session_verify_path_beats_curl_ca_bundle(self):
+        """A verify path is not overridden by CURL_CA_BUNDLE."""
+        session = client.get_session_for_url(
+            "https://lxd.test:8443", verify="/path/server.crt"
+        )
+        self.assertEqual(self._merged_settings(session)["verify"], "/path/server.crt")
+
+    @mock.patch.dict(os.environ, {"REQUESTS_CA_BUNDLE": "/env/ca-bundle.crt"})
+    def test_session_verify_true_uses_requests_ca_bundle(self):
+        """verify=True still picks up the CA bundle from the environment."""
+        session = client.get_session_for_url("https://lxd.test:8443", verify=True)
+        self.assertEqual(self._merged_settings(session)["verify"], "/env/ca-bundle.crt")
+
+    @mock.patch.dict(os.environ, {"REQUESTS_CA_BUNDLE": "/env/ca-bundle.crt"})
+    def test_session_request_verify_beats_session_verify(self):
+        """A verify passed for a single request still takes precedence."""
+        session = client.get_session_for_url("https://lxd.test:8443", verify=False)
+        settings = session.merge_environment_settings(
+            "https://lxd.test:8443/1.0", {}, None, "/path/other.crt", None
+        )
+        self.assertEqual(settings["verify"], "/path/other.crt")
+
+    @mock.patch.dict(
+        os.environ,
+        {
+            "REQUESTS_CA_BUNDLE": "/env/ca-bundle.crt",
+            "HTTPS_PROXY": "http://proxy.test:3128",
+        },
+    )
+    def test_session_verify_false_keeps_env_proxies(self):
+        """An explicit verify does not stop proxies coming from the environment."""
+        session = client.get_session_for_url("https://lxd.test:8443", verify=False)
+        settings = self._merged_settings(session)
+        self.assertIs(settings["verify"], False)
+        self.assertEqual(settings["proxies"]["https"], "http://proxy.test:3128")
+
+    @mock.patch.dict(os.environ, {"REQUESTS_CA_BUNDLE": "/env/ca-bundle.crt"})
+    def test_session_verify_false_sent_to_adapter(self):
+        """The adapter is asked not to verify when verify=False."""
+        session = client.get_session_for_url("https://lxd.test:8443", verify=False)
+        response = requests.Response()
+        response.status_code = 200
+        adapter = mock.Mock(**{"send.return_value": response})
+        session.mount("https://", adapter)
+        session.get("https://lxd.test:8443/1.0")
+        self.assertIs(adapter.send.call_args.kwargs["verify"], False)
+
 
 class TestWsExcludeOrigin:
     """Tests for pylxd.client._ws_exclude_origin."""
@@ -753,6 +872,81 @@ class TestWsExcludeOrigin:
     def test_ws_exclude_origin(self, input_kwargs, expected):
         client._ws_exclude_origin(input_kwargs)
         assert input_kwargs["exclude_headers"] == expected
+
+
+class TestSetDefaultContentType:
+    """Tests for pylxd.client._set_default_content_type."""
+
+    @pytest.mark.parametrize(
+        "input_kwargs,expected",
+        [
+            ({}, {}),
+            ({"data": None}, {"data": None}),
+            ({"json": {"a": 1}}, {"json": {"a": 1}}),
+            (
+                {"data": b"raw"},
+                {
+                    "data": b"raw",
+                    "headers": {"Content-Type": "application/octet-stream"},
+                },
+            ),
+            (
+                {"data": "raw", "headers": None},
+                {
+                    "data": "raw",
+                    "headers": {"Content-Type": "application/octet-stream"},
+                },
+            ),
+            (
+                {"data": b"raw", "headers": {"X-LXD-mode": "0644"}},
+                {
+                    "data": b"raw",
+                    "headers": {
+                        "X-LXD-mode": "0644",
+                        "Content-Type": "application/octet-stream",
+                    },
+                },
+            ),
+            (
+                {"data": b"raw", "headers": {"content-type": "text/plain"}},
+                {"data": b"raw", "headers": {"content-type": "text/plain"}},
+            ),
+            ({"data": {"a": "1"}}, {"data": {"a": "1"}}),
+            (
+                {"data": MappingProxyType({"a": "1"})},
+                {"data": MappingProxyType({"a": "1"})},
+            ),
+            (
+                {"data": b"raw", "files": {"f": b"x"}},
+                {"data": b"raw", "files": {"f": b"x"}},
+            ),
+            (
+                {"data": b"raw", "files": {}},
+                {
+                    "data": b"raw",
+                    "files": {},
+                    "headers": {"Content-Type": "application/octet-stream"},
+                },
+            ),
+        ],
+    )
+    def test_set_default_content_type(self, input_kwargs, expected):
+        client._set_default_content_type(input_kwargs)
+        assert input_kwargs == expected
+
+    def test_files_with_form_data_stay_multipart(self):
+        """requests builds the multipart Content-Type when files are sent."""
+        kwargs = {"data": MappingProxyType({"a": "1"}), "files": {"f": b"x"}}
+        client._set_default_content_type(kwargs)
+        assert "headers" not in kwargs
+        request = requests.Request("POST", "http://lxd.test", **kwargs).prepare()
+        assert request.headers["Content-Type"].startswith("multipart/form-data")
+
+    def test_does_not_mutate_caller_headers(self):
+        headers = {"X-LXD-mode": "0644"}
+        kwargs = {"data": b"raw", "headers": headers}
+        client._set_default_content_type(kwargs)
+        assert headers == {"X-LXD-mode": "0644"}
 
 
 class TestIsAToken(TestCase):
@@ -802,3 +996,13 @@ class TestIsAToken(TestCase):
         # These characters are never valid in strict base64 but b64decode without
         # validate=True would silently ignore them.
         self.assertFalse(client._is_a_token("not!valid@base64#"))
+
+    def test_json_string_containing_secret_is_not_a_token(self):
+        """A base64-encoded JSON string containing 'secret' is not a token."""
+        payload = base64.b64encode(json.dumps("my-secret-value").encode("utf-8"))
+        self.assertFalse(client._is_a_token(payload))
+
+    def test_json_list_containing_secret_is_not_a_token(self):
+        """A base64-encoded JSON list containing 'secret' is not a token."""
+        payload = base64.b64encode(json.dumps(["secret"]).encode("utf-8"))
+        self.assertFalse(client._is_a_token(payload))

@@ -154,6 +154,22 @@ class LXDSSLAdapter(requests.adapters.HTTPAdapter):
         super().cert_verify(conn, url, False, cert)
 
 
+class _Session(requests.Session):
+    """A Session whose own `verify` is not overridden by the environment.
+
+    With `trust_env`, requests replaces a session-level `verify` with
+    REQUESTS_CA_BUNDLE or CURL_CA_BUNDLE, so `verify=False` or a path to a
+    certificate would be silently ignored. Keep an explicit `verify` (False or
+    a path) and let the environment apply only when it is True or unset.
+    Proxies and the other environment settings are still honoured.
+    """
+
+    def merge_environment_settings(self, url, proxies, stream, verify, cert):
+        if verify is None and self.verify is not None and self.verify is not True:
+            verify = self.verify
+        return super().merge_environment_settings(url, proxies, stream, verify, cert)
+
+
 def get_session_for_url(
     url: str,
     verify: bool | str | None = None,
@@ -163,7 +179,7 @@ def get_session_for_url(
 
     Call sites can use this to customise the session before passing into a Client.
     """
-    session = requests.Session()
+    session = _Session()
     if url.startswith(DEFAULT_SCHEME):
         session.mount(DEFAULT_SCHEME, _UnixAdapter())
     else:
@@ -314,6 +330,8 @@ class _APINode:
             params.setdefault("project", self._project)
             kwargs["params"] = params
 
+        _set_default_content_type(kwargs)
+
         response = self.session.post(self._api_endpoint, *args, **kwargs)
         # Prior to LXD 2.0.3, successful synchronous requests returned 200,
         # rather than 201.
@@ -329,6 +347,8 @@ class _APINode:
             params.setdefault("project", self._project)
             kwargs["params"] = params
 
+        _set_default_content_type(kwargs)
+
         response = self.session.put(self._api_endpoint, *args, **kwargs)
         self._assert_response(response, allowed_status_codes=(200, 202))
         return response
@@ -341,6 +361,8 @@ class _APINode:
             params = dict(kwargs.get("params", {}))
             params.setdefault("project", self._project)
             kwargs["params"] = params
+
+        _set_default_content_type(kwargs)
 
         response = self.session.patch(self._api_endpoint, *args, **kwargs)
         self._assert_response(response, allowed_status_codes=(200, 202))
@@ -383,6 +405,33 @@ def _ws_exclude_origin(kwargs):
         kwargs["exclude_headers"] = list(existing) + ["origin"]
 
 
+def _set_default_content_type(kwargs):
+    """Label a raw request body as ``application/octet-stream``.
+
+    LXD validates the ``Content-Type`` of request bodies and expects
+    ``application/octet-stream`` for raw uploads such as file pushes and
+    image or backup imports.  ``requests`` already sends ``application/json``
+    for ``json=`` bodies, but sends no ``Content-Type`` for raw ``data=``
+    bodies, so set it here.
+
+    The function mutates *kwargs* in place.  A ``Content-Type`` supplied by
+    the caller (checked case-insensitively) is left untouched, as are form
+    bodies given as a mapping, list or tuple and requests with ``files=``,
+    which ``requests`` encodes itself.
+    """
+    data = kwargs.get("data")
+    if data is None or isinstance(data, (Mapping, list, tuple)):
+        return
+    if kwargs.get("files"):
+        return
+
+    headers = kwargs.get("headers") or {}
+    if any(k.lower() == "content-type" for k in headers):
+        return
+
+    kwargs["headers"] = {**headers, "Content-Type": "application/octet-stream"}
+
+
 class _WebsocketClient(WebSocketBaseClient):
     """A basic websocket client for the LXD API.
 
@@ -421,7 +470,7 @@ def _is_a_token(secret) -> bool:
     >>> _is_a_token(base64.b64encode("password".encode("utf-8")))
     False
     >>> token = '{"client_name":"foo","fingerprint":"abcd","addresses":["192.0.2.1:8443"],"secret":"I-am-a-secret","expires_at":"0001-01-01T00:00:00Z","type":""}'
-    >>> _is_a_token(base64.b64encode(json.dumps(token).encode("utf-8")))
+    >>> _is_a_token(base64.b64encode(token.encode("utf-8")))
     True
     """
     try:
@@ -431,7 +480,7 @@ def _is_a_token(secret) -> bool:
             secret = secret.strip()
         b64 = base64.b64decode(secret, validate=True)
         token = json.loads(b64.decode("utf-8"))
-        return "secret" in token
+        return isinstance(token, dict) and "secret" in token
     except (TypeError, ValueError, json.JSONDecodeError, binascii.Error):
         return False
 

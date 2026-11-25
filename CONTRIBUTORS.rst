@@ -5,7 +5,7 @@ Contributors to pylxd
 These are the contributors to pylxd according to the GitHub repository.
 
  ===============  ==================================
- GHsername        Name
+ GitHub Username  Name
  ===============  ==================================
  rockstar         Paul Hummer
  zulcss           Chuck Short
@@ -45,5 +45,7 @@ These are the contributors to pylxd according to the GitHub repository.
  mate-amargo      Juan Alberto Regalado Galvan
  gajeshbhat       Gajesh Bhat
  tugbataluy       Tuğba Taluy (Canonical)
+ abdull-ah-med    Abdullah Ahmed
+ 18Abhinav07      Abhinav Pangaria
  ===============  ==================================
 
